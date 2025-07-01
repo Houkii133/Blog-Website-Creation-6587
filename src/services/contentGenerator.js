@@ -1,48 +1,57 @@
-import OpenAI from 'openai';
+import aiProvider from './aiProviders.js';
 import supabase from '../lib/supabase.js';
 import ContentScraper from './scraper.js';
 
 class AIContentGenerator {
   constructor() {
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY || 'your-openai-api-key-here'
-    });
     this.scraper = new ContentScraper();
   }
 
   async generateBlogPost(sourceArticles, category, trendingTopic) {
     console.log(`🤖 Generating blog post for ${category}: ${trendingTopic}`);
-
+    
     try {
       const prompt = this.createPrompt(sourceArticles, category, trendingTopic);
       
-      const completion = await this.openai.chat.completions.create({
-        model: "gpt-4",
-        messages: [
-          {
-            role: "system",
-            content: `You are an expert tech blogger and content creator. Write engaging, SEO-optimized blog posts that feel human and conversational. Focus on providing value to readers while maintaining journalistic integrity.`
-          },
-          {
-            role: "user",
-            content: prompt
+      // Try different AI providers with fallback
+      const availableProviders = aiProvider.getAvailableProviders();
+      let generatedContent = null;
+      
+      for (const provider of availableProviders) {
+        try {
+          console.log(`Trying ${provider} for content generation...`);
+          generatedContent = await aiProvider.generateContent(prompt, {
+            provider,
+            maxTokens: 3000
+          });
+          
+          if (generatedContent) {
+            console.log(`✅ Successfully generated content with ${provider}`);
+            break;
           }
-        ],
-        max_tokens: 3000,
-        temperature: 0.7
-      });
+        } catch (error) {
+          console.warn(`${provider} failed:`, error.message);
+          continue;
+        }
+      }
+      
+      if (!generatedContent) {
+        throw new Error('All AI providers failed to generate content');
+      }
 
-      const generatedContent = completion.choices[0].message.content;
-      
       // Parse the generated content
-      const blogPost = this.parseGeneratedContent(generatedContent, category, trendingTopic, sourceArticles);
-      
+      const blogPost = this.parseGeneratedContent(
+        generatedContent, 
+        category, 
+        trendingTopic, 
+        sourceArticles
+      );
+
       // Save to database
       await this.saveBlogPost(blogPost);
-      
       console.log(`✅ Generated blog post: "${blogPost.title}"`);
+      
       return blogPost;
-
     } catch (error) {
       console.error('Error generating content:', error);
       return null;
@@ -74,12 +83,10 @@ TITLE: [Your SEO-optimized title]
 META_DESCRIPTION: [Your meta description]
 TAGS: [5-7 relevant tags separated by commas]
 READING_TIME: [estimated reading time]
-
-CONTENT:
-[Your full blog post content with proper headings and structure]
+CONTENT: [Your full blog post content with proper headings and structure]
 
 Focus on what this means for readers, why it matters, and what trends to watch. Make it engaging and informative while maintaining credibility.
-`;
+    `;
   }
 
   parseGeneratedContent(content, category, trendingTopic, sourceArticles) {
@@ -113,7 +120,11 @@ Focus on what this means for readers, why it matters, and what trends to watch. 
       tags: tags.split(',').map(tag => tag.trim()),
       reading_time: readingTime || '5 min read',
       trending_topic: trendingTopic,
-      source_articles: sourceArticles.map(a => ({ title: a.title, url: a.link, source: a.source })),
+      source_articles: sourceArticles.map(a => ({
+        title: a.title,
+        url: a.link,
+        source: a.source
+      })),
       published: new Date(),
       slug: this.generateSlug(title || trendingTopic),
       seo_score: this.calculateSEOScore(title, blogContent, metaDescription),
@@ -132,28 +143,28 @@ Focus on what this means for readers, why it matters, and what trends to watch. 
 
   calculateSEOScore(title, content, metaDescription) {
     let score = 0;
-    
+
     // Title length check
     if (title.length >= 30 && title.length <= 60) score += 20;
-    
+
     // Meta description length check
     if (metaDescription.length >= 120 && metaDescription.length <= 160) score += 15;
-    
+
     // Content length check
     if (content.length >= 1000) score += 20;
-    
+
     // Heading structure check
     if (content.includes('##') || content.includes('<h2>')) score += 15;
-    
+
     // Keyword density (simple check)
     const wordCount = content.split(' ').length;
     if (wordCount >= 300) score += 15;
-    
+
     // Readability (simple sentence length check)
     const sentences = content.split(/[.!?]+/);
     const avgSentenceLength = wordCount / sentences.length;
     if (avgSentenceLength >= 15 && avgSentenceLength <= 25) score += 15;
-    
+
     return Math.min(score, 100);
   }
 
@@ -178,11 +189,11 @@ Focus on what this means for readers, why it matters, and what trends to watch. 
     
     // Get trending topics from scraped articles
     const trendsByCategory = await this.scraper.getLatestTrends();
-    
     const generatedPosts = [];
-    
+
     for (const [category, articles] of Object.entries(trendsByCategory)) {
       if (articles.length >= 3) { // Need at least 3 articles to create a comprehensive post
+        
         // Find the most common trending topic
         const topicCounts = {};
         articles.forEach(article => {
@@ -193,16 +204,16 @@ Focus on what this means for readers, why it matters, and what trends to watch. 
             }
           });
         });
-        
+
         const trendingTopic = Object.keys(topicCounts).reduce((a, b) => 
           topicCounts[a] > topicCounts[b] ? a : b
         );
-        
+
         // Take top 5 articles for this topic
         const relevantArticles = articles
           .filter(article => article.title.toLowerCase().includes(trendingTopic))
           .slice(0, 5);
-        
+
         if (relevantArticles.length >= 2) {
           const blogPost = await this.generateBlogPost(relevantArticles, category, trendingTopic);
           if (blogPost) {
@@ -211,7 +222,7 @@ Focus on what this means for readers, why it matters, and what trends to watch. 
         }
       }
     }
-    
+
     console.log(`✅ Generated ${generatedPosts.length} blog posts`);
     return generatedPosts;
   }
