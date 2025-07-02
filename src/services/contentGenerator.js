@@ -1,4 +1,4 @@
-import aiProvider from './aiProviders.js';
+import secureAIService from './secureAIService.js';
 import supabase from '../lib/supabase.js';
 import ContentScraper from './scraper.js';
 
@@ -9,49 +9,56 @@ class AIContentGenerator {
 
   async generateBlogPost(sourceArticles, category, trendingTopic) {
     console.log(`🤖 Generating blog post for ${category}: ${trendingTopic}`);
-    
+
     try {
       const prompt = this.createPrompt(sourceArticles, category, trendingTopic);
       
-      // Try different AI providers with fallback
-      const availableProviders = aiProvider.getAvailableProviders();
-      let generatedContent = null;
+      // Use secure AI service
+      let generatedContent;
+      const availableProviders = secureAIService.getAvailableProviders();
       
-      for (const provider of availableProviders) {
-        try {
-          console.log(`Trying ${provider} for content generation...`);
-          generatedContent = await aiProvider.generateContent(prompt, {
-            provider,
-            maxTokens: 3000
-          });
-          
-          if (generatedContent) {
-            console.log(`✅ Successfully generated content with ${provider}`);
-            break;
+      if (availableProviders.includes('demo')) {
+        // Demo mode - no API keys configured
+        console.log('📝 Using demo content generation');
+        generatedContent = secureAIService.generateDemoContent(prompt);
+      } else {
+        // Try available providers
+        for (const provider of availableProviders) {
+          try {
+            console.log(`Trying ${provider} for content generation...`);
+            generatedContent = await secureAIService.generateContent(prompt, {
+              provider,
+              maxTokens: 3000
+            });
+            
+            if (generatedContent) {
+              console.log(`✅ Successfully generated content with ${provider}`);
+              break;
+            }
+          } catch (error) {
+            console.warn(`${provider} failed:`, error.message);
+            continue;
           }
-        } catch (error) {
-          console.warn(`${provider} failed:`, error.message);
-          continue;
         }
       }
-      
+
       if (!generatedContent) {
         throw new Error('All AI providers failed to generate content');
       }
 
       // Parse the generated content
       const blogPost = this.parseGeneratedContent(
-        generatedContent, 
-        category, 
-        trendingTopic, 
+        generatedContent,
+        category,
+        trendingTopic,
         sourceArticles
       );
 
       // Save to database
-      await this.saveBlogPost(blogPost);
+      const savedPost = await secureAIService.saveBlogPost(blogPost);
       console.log(`✅ Generated blog post: "${blogPost.title}"`);
       
-      return blogPost;
+      return savedPost;
     } catch (error) {
       console.error('Error generating content:', error);
       return null;
@@ -168,25 +175,9 @@ Focus on what this means for readers, why it matters, and what trends to watch. 
     return Math.min(score, 100);
   }
 
-  async saveBlogPost(blogPost) {
-    try {
-      const { data, error } = await supabase
-        .from('ai_generated_posts_ai2024')
-        .insert([blogPost]);
-
-      if (error) {
-        console.error('Error saving blog post:', error);
-      } else {
-        console.log(`💾 Blog post saved successfully`);
-      }
-    } catch (error) {
-      console.error('Failed to save blog post:', error);
-    }
-  }
-
   async generateDailyContent() {
     console.log('🚀 Starting daily content generation...');
-    
+
     // Get trending topics from scraped articles
     const trendsByCategory = await this.scraper.getLatestTrends();
     const generatedPosts = [];
@@ -231,7 +222,7 @@ Focus on what this means for readers, why it matters, and what trends to watch. 
 export default AIContentGenerator;
 
 // Run generator if called directly
-if (process.argv[1].endsWith('contentGenerator.js')) {
+if (typeof window === 'undefined' && process.argv[1].endsWith('contentGenerator.js')) {
   const generator = new AIContentGenerator();
   generator.generateDailyContent().then(() => {
     console.log('Content generation completed!');

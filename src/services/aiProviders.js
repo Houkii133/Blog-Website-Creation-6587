@@ -1,44 +1,71 @@
-import OpenAI from 'openai';
+// Production-ready AI Provider Manager with Supabase integration
+import apiKeyManager from './apiKeyManager.js';
 
 class AIProviderManager {
   constructor() {
     this.providers = {
-      openai: new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY || import.meta.env.VITE_OPENAI_API_KEY
-      }),
-      claude: null, // Will initialize when needed
-      gemini: null  // Will initialize when needed
+      openai: null,
+      claude: null,
+      gemini: null
     };
-    
-    this.currentProvider = 'openai'; // Default provider
+    this.currentProvider = 'openai';
+  }
+
+  async initializeOpenAI() {
+    try {
+      const apiKey = await apiKeyManager.getKeyForProvider('openai');
+      if (!apiKey) {
+        throw new Error('OpenAI API key not configured');
+      }
+
+      const OpenAI = (await import('openai')).default;
+      this.providers.openai = new OpenAI({
+        apiKey: apiKey,
+        dangerouslyAllowBrowser: true // Required for client-side usage
+      });
+      
+      return this.providers.openai;
+    } catch (error) {
+      console.warn('OpenAI SDK not available:', error.message);
+      throw error;
+    }
   }
 
   async initializeClaude() {
-    if (!this.providers.claude) {
-      try {
-        const { Anthropic } = await import('@anthropic-ai/sdk');
-        this.providers.claude = new Anthropic({
-          apiKey: process.env.ANTHROPIC_API_KEY || import.meta.env.VITE_ANTHROPIC_API_KEY
-        });
-      } catch (error) {
-        console.warn('Claude SDK not available:', error.message);
+    try {
+      const apiKey = await apiKeyManager.getKeyForProvider('claude');
+      if (!apiKey) {
+        throw new Error('Claude API key not configured');
       }
+
+      const { Anthropic } = await import('@anthropic-ai/sdk');
+      this.providers.claude = new Anthropic({
+        apiKey: apiKey,
+        dangerouslyAllowBrowser: true // Required for client-side usage
+      });
+      
+      return this.providers.claude;
+    } catch (error) {
+      console.warn('Claude SDK not available:', error.message);
+      throw error;
     }
-    return this.providers.claude;
   }
 
   async initializeGemini() {
-    if (!this.providers.gemini) {
-      try {
-        const { GoogleGenerativeAI } = await import('@google/generative-ai');
-        this.providers.gemini = new GoogleGenerativeAI(
-          process.env.GOOGLE_API_KEY || import.meta.env.VITE_GOOGLE_API_KEY
-        );
-      } catch (error) {
-        console.warn('Gemini SDK not available:', error.message);
+    try {
+      const apiKey = await apiKeyManager.getKeyForProvider('gemini');
+      if (!apiKey) {
+        throw new Error('Gemini API key not configured');
       }
+
+      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      this.providers.gemini = new GoogleGenerativeAI(apiKey);
+      
+      return this.providers.gemini;
+    } catch (error) {
+      console.warn('Gemini SDK not available:', error.message);
+      throw error;
     }
-    return this.providers.gemini;
   }
 
   async generateContent(prompt, options = {}) {
@@ -47,16 +74,14 @@ class AIProviderManager {
     try {
       switch (provider) {
         case 'openai':
+          await this.initializeOpenAI();
           return await this.generateWithOpenAI(prompt, maxTokens);
-        
         case 'claude':
           await this.initializeClaude();
           return await this.generateWithClaude(prompt, maxTokens);
-        
         case 'gemini':
           await this.initializeGemini();
           return await this.generateWithGemini(prompt, maxTokens);
-        
         default:
           throw new Error(`Unknown provider: ${provider}`);
       }
@@ -66,7 +91,12 @@ class AIProviderManager {
       // Fallback to other providers
       if (provider !== 'openai') {
         console.log('Falling back to OpenAI...');
-        return await this.generateWithOpenAI(prompt, maxTokens);
+        try {
+          await this.initializeOpenAI();
+          return await this.generateWithOpenAI(prompt, maxTokens);
+        } catch (fallbackError) {
+          console.error('OpenAI fallback failed:', fallbackError.message);
+        }
       }
       
       throw error;
@@ -74,6 +104,10 @@ class AIProviderManager {
   }
 
   async generateWithOpenAI(prompt, maxTokens) {
+    if (!this.providers.openai) {
+      throw new Error('OpenAI not initialized');
+    }
+
     const completion = await this.providers.openai.chat.completions.create({
       model: "gpt-4",
       messages: [
@@ -117,7 +151,7 @@ class AIProviderManager {
       throw new Error('Gemini not initialized');
     }
 
-    const model = this.providers.gemini.getGenerativeModel({ 
+    const model = this.providers.gemini.getGenerativeModel({
       model: "gemini-1.5-flash",
       generationConfig: {
         maxOutputTokens: maxTokens,
@@ -130,38 +164,15 @@ class AIProviderManager {
     return response.text();
   }
 
-  // Rotate providers for load balancing
-  rotateProvider() {
-    const providers = ['openai', 'claude', 'gemini'];
-    const currentIndex = providers.indexOf(this.currentProvider);
-    this.currentProvider = providers[(currentIndex + 1) % providers.length];
-    return this.currentProvider;
-  }
-
-  setProvider(provider) {
-    if (['openai', 'claude', 'gemini'].includes(provider)) {
-      this.currentProvider = provider;
-    } else {
-      throw new Error(`Invalid provider: ${provider}`);
+  async getAvailableProviders() {
+    try {
+      const keys = await apiKeyManager.getAPIKeys();
+      const available = Object.keys(keys).filter(provider => keys[provider]);
+      return available.length > 0 ? available : ['demo'];
+    } catch (error) {
+      console.error('Failed to get available providers:', error);
+      return ['demo'];
     }
-  }
-
-  getAvailableProviders() {
-    const available = [];
-    
-    if (process.env.OPENAI_API_KEY || import.meta.env.VITE_OPENAI_API_KEY) {
-      available.push('openai');
-    }
-    
-    if (process.env.ANTHROPIC_API_KEY || import.meta.env.VITE_ANTHROPIC_API_KEY) {
-      available.push('claude');
-    }
-    
-    if (process.env.GOOGLE_API_KEY || import.meta.env.VITE_GOOGLE_API_KEY) {
-      available.push('gemini');
-    }
-    
-    return available;
   }
 }
 

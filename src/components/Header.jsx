@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import * as FiIcons from 'react-icons/fi';
 import SafeIcon from '../common/SafeIcon';
 
-const { FiMenu, FiX, FiSearch, FiEdit3 } = FiIcons;
+const { FiMenu, FiX, FiSearch, FiEdit3, FiSettings } = FiIcons;
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -14,6 +14,7 @@ const Header = () => {
     { name: 'Home', href: '/' },
     { name: 'About', href: '/about' },
     { name: 'Contact', href: '/contact' },
+    { name: 'Admin', href: '/admin' }
   ];
 
   const isActive = (path) => location.pathname === path;
@@ -43,11 +44,13 @@ const Header = () => {
                   isActive(item.href)
                     ? 'text-primary-600'
                     : 'text-gray-700 hover:text-primary-600'
-                }`}
+                } ${item.name === 'Admin' ? 'flex items-center space-x-1' : ''}`}
               >
-                {item.name}
+                {item.name === 'Admin' && <SafeIcon icon={FiSettings} className="h-4 w-4" />}
+                <span>{item.name}</span>
               </Link>
             ))}
+
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
@@ -66,15 +69,12 @@ const Header = () => {
             >
               <SafeIcon icon={FiSearch} className="h-5 w-5" />
             </motion.button>
-            
+
             <button
               className="md:hidden p-2 text-gray-400 hover:text-gray-600"
               onClick={() => setIsMenuOpen(!isMenuOpen)}
             >
-              <SafeIcon 
-                icon={isMenuOpen ? FiX : FiMenu} 
-                className="h-6 w-6" 
-              />
+              <SafeIcon icon={isMenuOpen ? FiX : FiMenu} className="h-6 w-6" />
             </button>
           </div>
         </div>
@@ -96,10 +96,11 @@ const Header = () => {
                     isActive(item.href)
                       ? 'text-primary-600'
                       : 'text-gray-700 hover:text-primary-600'
-                  }`}
+                  } ${item.name === 'Admin' ? 'flex items-center space-x-2' : ''}`}
                   onClick={() => setIsMenuOpen(false)}
                 >
-                  {item.name}
+                  {item.name === 'Admin' && <SafeIcon icon={FiSettings} className="h-4 w-4" />}
+                  <span>{item.name}</span>
                 </Link>
               ))}
               <button className="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors w-fit">

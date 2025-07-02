@@ -1,11 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
 
-// Project credentials will be auto-injected during deployment
-const SUPABASE_URL = 'https://your-project-id.supabase.co'
-const SUPABASE_ANON_KEY = 'your-anon-key'
+// Project credentials - safe for frontend use
+const SUPABASE_URL = 'https://esmfevnljgdejvqdftbu.supabase.co'
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVzbWZldm5samdkZWp2cWRmdGJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE0MDc3NTcsImV4cCI6MjA2Njk4Mzc1N30.cpTv94pWhFJCxylVc1nxKRvHtaC3Q7PxbPz1HfOSH9o'
 
-if(SUPABASE_URL === 'https://your-project-id.supabase.co' || SUPABASE_ANON_KEY === 'your-anon-key') {
-  console.warn('Supabase credentials not configured. Please connect your Supabase project.');
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  throw new Error('Missing Supabase environment variables');
 }
 
 export default createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
